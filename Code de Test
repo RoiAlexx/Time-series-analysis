@@ -1,0 +1,76 @@
+#IMPORTATION DES LIBRAIRIES NECESSAIRES
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from scipy import stats
+import statsmodels.api as sm
+from itertools import product
+from datetime import datetime
+plt.style.use('ggplot')
+
+df = pd.read_excel('dataset2.xlsx')
+print(df.head())
+df.Date = pd.to_datetime(df.Date)
+
+#TRANSFORMATION EN DONNEES MENSUELLE
+df_month = df.resample('M', on='Date').mean()
+#TRANSFORMATION EN DONNEES ANNUELLE
+df_year = df.resample('A-DEC', on='Date').mean()
+#TRANSFORMATION EN DONNEES TRIMESTRIELLE
+df_Q = df.resample('Q-DEC', on='Date').mean()
+
+fig = plt.figure(figsize=[15,7])
+plt.suptitle('Electricity spot price per MWh, mean EUR', fontsize=22)
+
+plt.subplot(221)
+plt.plot(df['Date'], df['Price'], '-', label='By Days')
+plt.legend()
+#plt.xticks(rotation=45)
+
+plt.subplot(222)
+plt.plot(df_month.Price, '-', label='By Months')
+plt.legend()
+
+plt.subplot(223)
+plt.plot(df_Q.Price, '-', label='By Quarters')
+plt.legend()
+
+plt.subplot(224)
+plt.plot(df_year.Price, '-', label='By Years')
+plt.legend()
+
+plt.show()
+
+
+#We will predict electricity spot prices by months
+
+sm.tsa.seasonal_decompose(df_month.Price).plot()
+plt.show()
+print("Dickey-Fuller test: p=%f" % sm.tsa.stattools.adfuller(df_month.Price)[1])
+
+
+#BOX-COX TRANSFORMATIONS
+df_month['Price_Box'], lmbda = stats.boxcox(df_month.Price)
+print("Dickey-Fuller test: p=%f" % sm.tsa.stattools.adfuller(df_month.Price_Box)[1])
+
+#SEASONAL DIFFERENTIATION
+df_month['Price_Box_Diff'] = df_month.Price_Box - df_month.Price_Box.shift(12)
+print("Dickey-Fuller test: p=%f" % sm.tsa.stattools.adfuller(df_month.Price_Box_Diff[12:])[1])
+
+#REGULAR DIFFERENTIATION
+df_month['Price_Box_Diff2'] = df_month.Price_Box_Diff - df_month.Price_Box_Diff.shift(1)
+
+sm.tsa.seasonal_decompose(df_month.Price_Box_Diff2[13:]).plot()
+print("Dickey-Fuller test: p=%f" % sm.tsa.stattools.adfuller(df_month.Price_Box_Diff2[13:])[1])
+plt.show()
+
+#MODEL SELECTION
+plt.figure(figsize=(15,7))
+ax = plt.subplot(211)
+sm.graphics.tsa.plot_acf(df_month.Price_Box_Diff2[13:].values.squeeze(), lags=15, ax=ax) #ACF
+ax = plt.subplot(212)
+sm.graphics.tsa.plot_pacf(df_month.Price_Box_Diff2[13:].values.squeeze(), lags=13, ax=ax) #PACF
+plt.tight_layout()
+plt.show()
